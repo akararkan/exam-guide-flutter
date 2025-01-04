@@ -1,8 +1,85 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-
 import '../../global.dart';
+
+class User {
+  final int id;
+  final String fname;
+  final String lname;
+  final String username;
+  final String phone;
+  final String email;
+  final String role;
+  final int departmentId;
+  final DateTime joinDate;
+  final DateTime? lastLoginDate;
+
+  User({
+    required this.id,
+    required this.fname,
+    required this.lname,
+    required this.username,
+    required this.phone,
+    required this.email,
+    required this.role,
+    required this.departmentId,
+    required this.joinDate,
+    this.lastLoginDate,
+  });
+
+  factory User.fromJson(Map<String, dynamic> json) {
+    return User(
+      id: json['id'],
+      fname: json['fname'],
+      lname: json['lname'],
+      username: json['username'],
+      phone: json['phone'],
+      email: json['email'],
+      role: json['role'],
+      departmentId: json['departmentId'],
+      joinDate: DateTime.parse(json['joinDate']),
+      lastLoginDate: json['lastLoginDate'] != null
+          ? DateTime.parse(json['lastLoginDate'])
+          : null,
+    );
+  }
+}
+
+
+// Department Model and Colors
+class Department {
+  final int id;
+  final String name;
+  final Color color;
+
+  Department({
+    required this.id,
+    required this.name,
+    required this.color,
+  });
+}
+
+// Department Color Configuration
+class DepartmentConfig {
+  static final Map<int, Department> departments = {
+    1: Department(id: 1, name: 'IT: Level 2', color: Colors.deepOrange), // More visible than yellow
+    2: Department(id: 2, name: 'IT: Level 4', color: Colors.orange), // A clearer orange for better visibility
+    3: Department(id: 3, name: 'Gasht w Guzar: Level 2', color: Colors.blueAccent), // A brighter blue for better distinction
+    4: Department(id: 4, name: 'Gasht w Guzar: Level 4', color: Colors.cyan), // Lighter cyan for contrast
+    5: Department(id: 5, name: 'Darayy w Bank: Level 2', color: Colors.greenAccent), // Brighter green for better visibility
+    6: Department(id: 6, name: 'Darayy w Bank: Level 4', color: Colors.lightGreenAccent), // A vivid light green
+  };
+
+  static Color getColorForDepartment(int departmentId) {
+    return departments[departmentId]?.color ?? Colors.grey;
+  }
+
+  static String getDepartmentName(int departmentId) {
+    return departments[departmentId]?.name ?? 'Unknown Department';
+  }
+}
+
 
 class ExamHole {
   final int id;
@@ -47,12 +124,14 @@ class ExamHoleAssignment {
   final int examHoleId;
   final int userId;
   final String seatNumber;
+  final int departmentId;
 
   ExamHoleAssignment({
     required this.id,
     required this.examHoleId,
     required this.userId,
     required this.seatNumber,
+    required this.departmentId,
   });
 
   factory ExamHoleAssignment.fromJson(Map<String, dynamic> json) {
@@ -61,14 +140,13 @@ class ExamHoleAssignment {
       examHoleId: json['examHoleId'],
       userId: json['userId'],
       seatNumber: json['seatNumber'],
+      departmentId: json['departmentId'],
     );
   }
 }
 
-// Service for API Interactions
-
 class ExamService {
-  final String baseUrl = "http://192.168.33.14:8081/api/v1";
+  final String baseUrl = api;
 
   Future<List<ExamHole>> getAllExamHoles() async {
     final response = await http.get(Uri.parse('$baseUrl/examhole/getAllExamHoles'));
@@ -80,33 +158,92 @@ class ExamService {
     }
   }
 
+  Map<int, User> userCache = {};
+
+  // New method to fetch user data
+  Future<User> getUser(int userId) async {
+    if (userCache.containsKey(userId)) {
+      return userCache[userId]!;
+    }
+
+    final response = await http.get(
+      Uri.parse('$baseUrl/user/getAllUsers'),
+    );
+
+    if (response.statusCode == 200) {
+      List<dynamic> users = json.decode(response.body);
+      for (var userData in users) {
+        User user = User.fromJson(userData);
+        userCache[user.id] = user;
+      }
+
+      if (userCache.containsKey(userId)) {
+        return userCache[userId]!;
+      } else {
+        throw Exception('User not found');
+      }
+    } else {
+      throw Exception('Failed to load user data');
+    }
+  }
+
+
+  // Modify getExamHolesForUser to include department information
   Future<List<ExamHoleAssignment>> getExamHolesForUser(int userId) async {
+    final user = await getUser(userId);
     final response = await http.get(
       Uri.parse('$baseUrl/examhole-assignment/getExamHolesForUser/$userId'),
     );
+
     if (response.statusCode == 200) {
       List<dynamic> data = json.decode(response.body);
-      return data.map((json) => ExamHoleAssignment.fromJson(json)).toList();
+      return data.map((json) => ExamHoleAssignment(
+        id: json['id'],
+        examHoleId: json['examHoleId'],
+        userId: json['userId'],
+        seatNumber: json['seatNumber'],
+        departmentId: user.departmentId, // Use department ID from user data
+      )).toList();
     } else {
       throw Exception('Failed to load user assignments');
     }
   }
 
-  // Fetch all assignments for a specific ExamHole
+
+  // Modify getAssignmentsForExamHole to include department information
   Future<List<ExamHoleAssignment>> getAssignmentsForExamHole(int examHoleId) async {
     final response = await http.get(
       Uri.parse('$baseUrl/examhole-assignment/getUsersInExamHole/$examHoleId/users'),
     );
+
     if (response.statusCode == 200) {
       List<dynamic> data = json.decode(response.body);
-      return data.map((json) => ExamHoleAssignment.fromJson(json)).toList();
+      List<ExamHoleAssignment> assignments = [];
+
+      for (var json in data) {
+        try {
+          final user = await getUser(json['userId']);
+          assignments.add(ExamHoleAssignment(
+            id: json['id'],
+            examHoleId: json['examHoleId'],
+            userId: json['userId'],
+            seatNumber: json['seatNumber'],
+            departmentId: user.departmentId, // Use department ID from user data
+          ));
+        } catch (e) {
+          print('Error fetching user data for assignment: $e');
+          // Skip this assignment if user data cannot be fetched
+          continue;
+        }
+      }
+      return assignments;
     } else {
       throw Exception('Failed to load seat assignments');
     }
   }
-}
 
-// Main ExamTab Widget
+
+}
 
 class ExamTab extends StatefulWidget {
   const ExamTab({Key? key}) : super(key: key);
@@ -173,6 +310,7 @@ class _ExamTabState extends State<ExamTab> {
               examHoleId: examHole.id,
               userId: -1,
               seatNumber: '',
+              departmentId: -1,
             ),
           );
           return ExamHoleCard(
@@ -184,8 +322,6 @@ class _ExamTabState extends State<ExamTab> {
     );
   }
 }
-
-// Widget for Each ExamHole Card
 
 class ExamHoleCard extends StatelessWidget {
   final ExamHole examHole;
@@ -199,6 +335,10 @@ class ExamHoleCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final departmentName = userAssignment.userId != -1
+        ? DepartmentConfig.getDepartmentName(userAssignment.departmentId)
+        : '';
+
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
       elevation: 4,
@@ -210,6 +350,7 @@ class ExamHoleCard extends StatelessWidget {
               builder: (context) => SeatingPlanScreen(
                 examHole: examHole,
                 userSeatNumber: userAssignment.userId != -1 ? userAssignment.seatNumber : null,
+                userDepartmentId: userAssignment.userId != -1 ? userAssignment.departmentId : null,
               ),
             ),
           );
@@ -243,12 +384,13 @@ class ExamHoleCard extends StatelessWidget {
                 const SizedBox(height: 8),
                 Row(
                   children: [
-                    const Icon(Icons.person_pin_circle, color: Colors.green),
+                    Icon(Icons.person_pin_circle,
+                        color: DepartmentConfig.getColorForDepartment(userAssignment.departmentId)),
                     const SizedBox(width: 4),
                     Text(
                       'Your Seat: Teacher Position',
-                      style: const TextStyle(
-                        color: Colors.green,
+                      style: TextStyle(
+                        color: DepartmentConfig.getColorForDepartment(userAssignment.departmentId),
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -273,15 +415,16 @@ class ExamHoleCard extends StatelessWidget {
   }
 }
 
-// Seating Plan Screen
 class SeatingPlanScreen extends StatefulWidget {
   final ExamHole examHole;
   final String? userSeatNumber;
+  final int? userDepartmentId;
 
   const SeatingPlanScreen({
     Key? key,
     required this.examHole,
     this.userSeatNumber,
+    this.userDepartmentId,
   }) : super(key: key);
 
   @override
@@ -318,7 +461,6 @@ class _SeatingPlanScreenState extends State<SeatingPlanScreen> {
     }
   }
 
-  // Generates seat names with spaces but ensures all 96 seats are visible
   List<List<String?>> _generateSeatGrid() {
     List<List<String?>> seatGrid = [];
 
@@ -361,7 +503,7 @@ class _SeatingPlanScreenState extends State<SeatingPlanScreen> {
       body: isLoading
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
-        scrollDirection: Axis.vertical, // Enable vertical scroll
+        scrollDirection: Axis.vertical,
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
@@ -369,16 +511,18 @@ class _SeatingPlanScreenState extends State<SeatingPlanScreen> {
               Padding(
                 padding: const EdgeInsets.only(bottom: 16),
                 child: Text(
-                  'Your Seat Number: Teacher Position',
-                  style: const TextStyle(
+                  'Your Seat : Teacher Position',
+                  style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
-                    color: Colors.orange,
+                    color: widget.userDepartmentId != null
+                        ? DepartmentConfig.getColorForDepartment(widget.userDepartmentId!)
+                        : Colors.green,
                   ),
                 ),
               ),
             SingleChildScrollView(
-              scrollDirection: Axis.horizontal, // Enable horizontal scroll
+              scrollDirection: Axis.horizontal,
               child: Column(
                 children: List.generate(
                   seatGrid.length,
@@ -400,6 +544,7 @@ class _SeatingPlanScreenState extends State<SeatingPlanScreen> {
                               examHoleId: widget.examHole.id,
                               userId: -1,
                               seatNumber: '',
+                              departmentId: -1,
                             ),
                           );
 
@@ -413,6 +558,8 @@ class _SeatingPlanScreenState extends State<SeatingPlanScreen> {
                               isCurrentUser: isCurrentUser,
                               isOccupied: isOccupied,
                               assignedUserId: assignment.userId,
+                              departmentId: assignment.departmentId,
+                              userDepartmentId: widget.userDepartmentId,
                             ),
                           );
                         }).toList(),
@@ -423,7 +570,7 @@ class _SeatingPlanScreenState extends State<SeatingPlanScreen> {
               ),
             ),
             const SizedBox(height: 16),
-            _buildStageDesign(), // Stage design added here
+            _buildStageDesign(),
             const SizedBox(height: 16),
             _buildLegend(),
           ],
@@ -444,7 +591,6 @@ class _SeatingPlanScreenState extends State<SeatingPlanScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          // Door section
           Column(
             children: const [
               Icon(Icons.door_front_door, size: 40, color: Colors.brown),
@@ -455,7 +601,6 @@ class _SeatingPlanScreenState extends State<SeatingPlanScreen> {
               ),
             ],
           ),
-          // Stage design
           Container(
             height: 60,
             width: 120,
@@ -474,7 +619,6 @@ class _SeatingPlanScreenState extends State<SeatingPlanScreen> {
               ),
             ),
           ),
-          // Teacher section
           Column(
             children: const [
               Icon(Icons.person, size: 40, color: Colors.orange),
@@ -489,21 +633,31 @@ class _SeatingPlanScreenState extends State<SeatingPlanScreen> {
       ),
     );
   }
+
   Widget _buildLegend() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
+    return Column(
       children: [
-        _buildLegendItem(Colors.orange, 'Your Seat'),
-        const SizedBox(width: 16),
-        _buildLegendItem(Colors.red, 'Occupied Seat'),
-        const SizedBox(width: 16),
-        _buildLegendItem(Colors.grey, 'Available Seat'),
+        Wrap(
+          alignment: WrapAlignment.center,
+          spacing: 16.0,
+          runSpacing: 8.0,
+          children: [
+            for (var dept in DepartmentConfig.departments.values)
+              _buildLegendItem(
+                dept.color,
+                dept.name,
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        _buildLegendItem(Colors.grey.shade300, 'Available Seat'),
       ],
     );
   }
 
   Widget _buildLegendItem(Color color, String label) {
     return Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
         Container(
           width: 16,
@@ -511,10 +665,14 @@ class _SeatingPlanScreenState extends State<SeatingPlanScreen> {
           decoration: BoxDecoration(
             color: color,
             shape: BoxShape.circle,
+            border: Border.all(color: Colors.grey.shade600),
           ),
         ),
         const SizedBox(width: 4),
-        Text(label),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 12),
+        ),
       ],
     );
   }
@@ -525,6 +683,8 @@ class SeatTile extends StatelessWidget {
   final bool isCurrentUser;
   final bool isOccupied;
   final int assignedUserId;
+  final int departmentId;
+  final int? userDepartmentId;
 
   const SeatTile({
     Key? key,
@@ -532,6 +692,8 @@ class SeatTile extends StatelessWidget {
     required this.isCurrentUser,
     required this.isOccupied,
     this.assignedUserId = -1,
+    required this.departmentId,
+    this.userDepartmentId,
   }) : super(key: key);
 
   @override
@@ -539,14 +701,15 @@ class SeatTile extends StatelessWidget {
     Color seatColor;
     String displayText = seatName;
     String tooltipText = 'Seat $seatName';
+    String departmentName = DepartmentConfig.getDepartmentName(departmentId);
 
     if (isCurrentUser) {
-      seatColor = Colors.green;
+      seatColor = DepartmentConfig.getColorForDepartment(departmentId);
       displayText += ' (You)';
-      tooltipText += ' - Your Seat';
+      tooltipText += ' - Your Seat ($departmentName)';
     } else if (isOccupied) {
-      seatColor = Colors.red;
-      tooltipText += ' - Occupied';
+      seatColor = DepartmentConfig.getColorForDepartment(departmentId);
+      tooltipText += ' - Occupied ($departmentName)';
     } else {
       seatColor = Colors.grey.shade300;
       tooltipText += ' - Available';
@@ -558,14 +721,10 @@ class SeatTile extends StatelessWidget {
         width: 40,
         height: 40,
         decoration: BoxDecoration(
-          color: isOccupied
-              ? seatColor
-              : (isCurrentUser ? seatColor : Colors.grey.shade300),
+          color: seatColor.withOpacity(0.8),
           border: Border.all(
-            color: isCurrentUser
-                ? Colors.green.shade700
-                : (isOccupied ? Colors.red.shade700 : Colors.grey),
-            width: isCurrentUser || isOccupied ? 2 : 1,
+            color: isCurrentUser ? Colors.black : Colors.grey.shade600,
+            width: isCurrentUser ? 2 : 1,
           ),
           borderRadius: BorderRadius.circular(8),
         ),
@@ -574,7 +733,7 @@ class SeatTile extends StatelessWidget {
             displayText,
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: isCurrentUser || isOccupied ? Colors.white : Colors.black,
+              color: isCurrentUser || isOccupied ? Colors.black : Colors.black87,
               fontWeight: isCurrentUser ? FontWeight.bold : FontWeight.normal,
               fontSize: 10,
             ),
@@ -584,4 +743,3 @@ class SeatTile extends StatelessWidget {
     );
   }
 }
-
