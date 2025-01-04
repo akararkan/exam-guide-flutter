@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:intl/intl.dart';
 import '../../global.dart';
 
 class User {
@@ -45,8 +46,6 @@ class User {
     );
   }
 }
-
-
 // Department Model and Colors
 class Department {
   final int id;
@@ -59,7 +58,6 @@ class Department {
     required this.color,
   });
 }
-
 // Department Color Configuration
 class DepartmentConfig {
   static final Map<int, Department> departments = {
@@ -79,8 +77,6 @@ class DepartmentConfig {
     return departments[departmentId]?.name ?? 'Unknown Department';
   }
 }
-
-
 class ExamHole {
   final int id;
   final int number;
@@ -118,7 +114,6 @@ class ExamHole {
     );
   }
 }
-
 class ExamHoleAssignment {
   final int id;
   final int examHoleId;
@@ -144,7 +139,6 @@ class ExamHoleAssignment {
     );
   }
 }
-
 class ExamService {
   final String baseUrl = api;
 
@@ -244,14 +238,12 @@ class ExamService {
 
 
 }
-
 class ExamTab extends StatefulWidget {
   const ExamTab({Key? key}) : super(key: key);
 
   @override
   _ExamTabState createState() => _ExamTabState();
 }
-
 class _ExamTabState extends State<ExamTab> {
   final ExamService _examService = ExamService();
   List<ExamHole> examHoles = [];
@@ -322,7 +314,6 @@ class _ExamTabState extends State<ExamTab> {
     );
   }
 }
-
 class ExamHoleCard extends StatelessWidget {
   final ExamHole examHole;
   final ExamHoleAssignment userAssignment;
@@ -415,6 +406,7 @@ class ExamHoleCard extends StatelessWidget {
   }
 }
 
+
 class SeatingPlanScreen extends StatefulWidget {
   final ExamHole examHole;
   final String? userSeatNumber;
@@ -461,6 +453,15 @@ class _SeatingPlanScreenState extends State<SeatingPlanScreen> {
     }
   }
 
+  void _showStudentDetails() {
+    showDialog(
+      context: context,
+      builder: (context) => StudentDetailsDialog(
+        assignments: allAssignments.where((a) => a.userId != -1).toList(),
+      ),
+    );
+  }
+
   List<List<String?>> _generateSeatGrid() {
     List<List<String?>> seatGrid = [];
 
@@ -499,6 +500,13 @@ class _SeatingPlanScreenState extends State<SeatingPlanScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.examHole.holeName),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.people),
+            tooltip: 'Show Student Details',
+            onPressed: _showStudentDetails,
+          ),
+        ],
       ),
       body: isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -674,6 +682,184 @@ class _SeatingPlanScreenState extends State<SeatingPlanScreen> {
           style: const TextStyle(fontSize: 12),
         ),
       ],
+    );
+  }
+}
+
+class StudentDetailsDialog extends StatefulWidget {
+  final List<ExamHoleAssignment> assignments;
+
+  const StudentDetailsDialog({
+    Key? key,
+    required this.assignments,
+  }) : super(key: key);
+
+  @override
+  State<StudentDetailsDialog> createState() => _StudentDetailsDialogState();
+}
+
+class _StudentDetailsDialogState extends State<StudentDetailsDialog> {
+  final ExamService _examService = ExamService();
+  final Map<int, User> _userDetails = {};
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserDetails();
+  }
+
+  Future<void> _loadUserDetails() async {
+    setState(() => _isLoading = true);
+    try {
+      for (var assignment in widget.assignments) {
+        if (assignment.userId != -1) {
+          final user = await _examService.getUser(assignment.userId);
+          setState(() {
+            _userDetails[assignment.userId] = user;
+          });
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error loading user details: $e')),
+        );
+      }
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      child: Container(
+        width: MediaQuery.of(context).size.width * 0.9,
+        height: MediaQuery.of(context).size.height * 0.8,
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Student Details',
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+              ],
+            ),
+            Text(
+              'Total Students: ${widget.assignments.where((a) => a.userId != -1).length}',
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 16),
+            if (_isLoading)
+              const Expanded(
+                child: Center(
+                  child: CircularProgressIndicator(),
+                ),
+              )
+            else
+              Expanded(
+                child: ListView.builder(
+                  itemCount: widget.assignments.length,
+                  itemBuilder: (context, index) {
+                    final assignment = widget.assignments[index];
+                    if (assignment.userId == -1) return const SizedBox.shrink();
+
+                    final user = _userDetails[assignment.userId];
+                    if (user == null) return const SizedBox.shrink();
+
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      elevation: 2,
+                      child: ExpansionTile(
+                        leading: CircleAvatar(
+                          backgroundColor: DepartmentConfig.getColorForDepartment(assignment.departmentId),
+                          child: Text(
+                            user.fname[0].toUpperCase(),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        title: Text(
+                          '${user.fname} ${user.lname}',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        subtitle: Text('Seat ${assignment.seatNumber}'),
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _buildDetailRow('Username', user.username),
+                                _buildDetailRow('Email', user.email),
+                                _buildDetailRow('Phone', user.phone),
+                                _buildDetailRow('Department',
+                                    DepartmentConfig.getDepartmentName(user.departmentId)),
+                                _buildDetailRow('Role', user.role),
+                                _buildDetailRow('Join Date',
+                                    DateFormat('MMM dd, yyyy').format(user.joinDate)),
+                                if (user.lastLoginDate != null)
+                                  _buildDetailRow('Last Login',
+                                      DateFormat('MMM dd, yyyy HH:mm').format(user.lastLoginDate!)),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDetailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 100,
+            child: Text(
+              '$label:',
+              style: const TextStyle(
+                fontWeight: FontWeight.w500,
+                color: Colors.grey,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
