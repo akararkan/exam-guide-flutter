@@ -444,7 +444,8 @@ class _SeatingPlanScreenState extends State<SeatingPlanScreen> {
 
   Future<void> _loadAssignments() async {
     try {
-      final assignments = await _examService.getAssignmentsForExamHole(widget.examHole.id);
+      final assignments =
+          await _examService.getAssignmentsForExamHole(widget.examHole.id);
       setState(() {
         allAssignments = assignments;
         isLoading = false;
@@ -464,16 +465,39 @@ class _SeatingPlanScreenState extends State<SeatingPlanScreen> {
   List<List<String?>> _generateSeatGrid() {
     List<List<String?>> seatGrid = [];
 
+    // Define the columns for each section
+    List<String> leftColumns = ['A', 'B', 'C'];
+    List<String> centerColumns = ['D', 'E', 'F', 'G', 'H', 'I'];
+    List<String> rightColumns = ['J', 'K', 'L'];
+
+    // Loop through rows 1 to 8
     for (int row = 8; row >= 1; row--) {
       List<String?> seatsInRow = [];
-      for (int col = 1; col <= 12; col++) {
-        if (col == 4 || col == 9) {
-          seatsInRow.add(null); // Space
-        } else {
-          String seatName = '${_getSeatLetter(col)}$row';
-          seatsInRow.add(seatName);
-        }
+
+      // Left section: A, B, C
+      for (int col = 0; col < leftColumns.length; col++) {
+        String seatName = '${leftColumns[col]}$row';
+        seatsInRow.add(seatName);
       }
+
+      // Add space between sections
+      seatsInRow.add(null);
+
+      // Center section: D, E, F, G, H, I
+      for (int col = 0; col < centerColumns.length; col++) {
+        String seatName = '${centerColumns[col]}$row';
+        seatsInRow.add(seatName);
+      }
+
+      // Add space between sections
+      seatsInRow.add(null);
+
+      // Right section: J, K, L
+      for (int col = 0; col < rightColumns.length; col++) {
+        String seatName = '${rightColumns[col]}$row';
+        seatsInRow.add(seatName);
+      }
+
       seatGrid.add(seatsInRow);
     }
 
@@ -484,7 +508,8 @@ class _SeatingPlanScreenState extends State<SeatingPlanScreen> {
     if (col <= 3) {
       return String.fromCharCode(64 + col); // A, B, C for left section
     } else if (col >= 5 && col <= 8) {
-      return String.fromCharCode(64 + (col - 1)); // D, E, F, G for center section
+      return String.fromCharCode(
+          64 + (col - 1)); // D, E, F, G for center section
     } else if (col >= 10) {
       return String.fromCharCode(64 + (col - 2)); // H, I, J for right section
     } else {
@@ -503,79 +528,83 @@ class _SeatingPlanScreenState extends State<SeatingPlanScreen> {
       body: isLoading
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
-          scrollDirection: Axis.vertical,
-          padding: const EdgeInsets.all(16),
-          child: Column(
-              children: [
-              if (widget.userSeatNumber != null)
-          Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: Text(
-        'Your Seat Number: ${widget.userSeatNumber}',
-        style: TextStyle(
-          fontSize: 18,
-          fontWeight: FontWeight.bold,
-          color: widget.userDepartmentId != null
-              ? DepartmentConfig.getColorForDepartment(widget.userDepartmentId!)
-              : Colors.green,
-        ),
-      ),
-    ),
-    SingleChildScrollView(
-    scrollDirection: Axis.horizontal,
-    child: Column(
-    children: List.generate(
-    seatGrid.length,
-    (rowIndex) {
-    final rowSeats = seatGrid[rowIndex];
-    return Padding(
-    padding: const EdgeInsets.only(bottom: 12),
-    child: Row(
-    mainAxisAlignment: MainAxisAlignment.center,
-    children: rowSeats.map((seatName) {
-    if (seatName == null) {
-    return const SizedBox(width: 40, height: 40);
-    }
+              scrollDirection: Axis.vertical,
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  if (widget.userSeatNumber != null)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 16),
+                      child: Text(
+                        'Your Seat Number: ${widget.userSeatNumber}',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: widget.userDepartmentId != null
+                              ? DepartmentConfig.getColorForDepartment(
+                                  widget.userDepartmentId!)
+                              : Colors.green,
+                        ),
+                      ),
+                    ),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Column(
+                      children: List.generate(
+                        seatGrid.length,
+                        (rowIndex) {
+                          final rowSeats = seatGrid[rowIndex];
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: rowSeats.map((seatName) {
+                                if (seatName == null) {
+                                  return const SizedBox(width: 40, height: 40);
+                                }
 
-    final assignment = allAssignments.firstWhere(
-    (a) => a.seatNumber.toUpperCase() == seatName.toUpperCase(),
-    orElse: () => ExamHoleAssignment(
-    id: -1,
-    examHoleId: widget.examHole.id,
-    userId: -1,
-    seatNumber: '',
-    departmentId: -1,
-    ),
-    );
+                                final assignment = allAssignments.firstWhere(
+                                  (a) =>
+                                      a.seatNumber.toUpperCase() ==
+                                      seatName.toUpperCase(),
+                                  orElse: () => ExamHoleAssignment(
+                                    id: -1,
+                                    examHoleId: widget.examHole.id,
+                                    userId: -1,
+                                    seatNumber: '',
+                                    departmentId: -1,
+                                  ),
+                                );
 
-    final isCurrentUser = seatName.toUpperCase() == widget.userSeatNumber?.toUpperCase();
-    final isOccupied = assignment.userId != -1;
+                                final isCurrentUser = seatName.toUpperCase() ==
+                                    widget.userSeatNumber?.toUpperCase();
+                                final isOccupied = assignment.userId != -1;
 
-    return Padding(
-    padding: const EdgeInsets.all(4.0),
-    child: SeatTile(
-      seatName: seatName,
-      isCurrentUser: isCurrentUser,
-      isOccupied: isOccupied,
-      assignedUserId: assignment.userId,
-      departmentId: assignment.departmentId,
-      userDepartmentId: widget.userDepartmentId,
-    ),
-    );
-    }).toList(),
-    ),
-    );
-    },
-    ),
-    ),
-    ),
-                const SizedBox(height: 16),
-                _buildStageDesign(),
-                const SizedBox(height: 16),
-                _buildLegend(),
-              ],
-          ),
-      ),
+                                return Padding(
+                                  padding: const EdgeInsets.all(4.0),
+                                  child: SeatTile(
+                                    seatName: seatName,
+                                    isCurrentUser: isCurrentUser,
+                                    isOccupied: isOccupied,
+                                    assignedUserId: assignment.userId,
+                                    departmentId: assignment.departmentId,
+                                    userDepartmentId: widget.userDepartmentId,
+                                  ),
+                                );
+                              }).toList(),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  _buildStageDesign(),
+                  const SizedBox(height: 16),
+                  _buildLegend(),
+                ],
+              ),
+            ),
     );
   }
 
