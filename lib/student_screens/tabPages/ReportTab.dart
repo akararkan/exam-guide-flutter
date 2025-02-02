@@ -1,9 +1,11 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:intl/intl.dart';
 
 import '../../global.dart';
+import 'package:http_parser/http_parser.dart';
 
 
 // User Model
@@ -57,6 +59,7 @@ class StudentRequest {
   final String requestStatus;
   final DateTime? createdAt;
   final DateTime? updatedAt;
+  final String? attachmentFile;
   final User user;
 
   StudentRequest({
@@ -67,6 +70,7 @@ class StudentRequest {
     required this.requestStatus,
     this.createdAt,
     this.updatedAt,
+    this.attachmentFile,
     required this.user,
   });
 
@@ -79,6 +83,7 @@ class StudentRequest {
       requestStatus: json['requestStatus'],
       createdAt: json['createdAt'] != null ? DateTime.parse(json['createdAt']) : null,
       updatedAt: json['updatedAt'] != null ? DateTime.parse(json['updatedAt']) : null,
+      attachmentFile: json['attachmentFile'],
       user: User.fromJson(json['user']),
     );
   }
@@ -89,10 +94,10 @@ class StudentRequest {
       'requestBody': requestBody,
       'requestStatus': requestStatus,
       'requestDate': DateTime.now().toIso8601String(),
+      'attachmentFile': attachmentFile,
     };
   }
 }
-
 class ReportTab extends StatefulWidget {
   const ReportTab({super.key});
 
@@ -193,12 +198,54 @@ class _NewRequestFormState extends State<NewRequestForm> {
   final _headerController = TextEditingController();
   final _bodyController = TextEditingController();
   bool _isSubmitting = false;
+  PlatformFile? _selectedFile;
+  String? _fileName;
+
+  Future<void> _pickFile() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.image,
+        allowMultiple: false,
+      );
+
+      if (result != null) {
+        setState(() {
+          _selectedFile = result.files.first;
+          _fileName = _selectedFile!.name;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error picking file: $e')),
+        );
+      }
+    }
+  }
 
   Future<void> _submitRequest() async {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isSubmitting = true);
     try {
+      // Create multipart request
+      var request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$api/student-requests/addStudentRequest/$globalUserId'),
+      );
+
+      // Add file if selected
+      if (_selectedFile != null) {
+        final file = await http.MultipartFile.fromPath(
+          'attachmentFile',
+          _selectedFile!.path!,
+          // Set the content type for the file
+          contentType: MediaType('image', 'jpeg'), // Adjust based on your file type
+        );
+        request.files.add(file);
+      }
+
+      // Create the student request JSON
       final requestData = {
         'requestHeader': _headerController.text,
         'requestBody': _bodyController.text,
@@ -206,21 +253,33 @@ class _NewRequestFormState extends State<NewRequestForm> {
         'requestDate': DateTime.now().toIso8601String(),
       };
 
-      final response = await http.post(
-        Uri.parse('$api/student-requests/addStudentRequest/$globalUserId'),
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode(requestData),
+      // Add the JSON part with correct content type
+      final studentRequestPart = http.MultipartFile.fromString(
+        'studentRequest',
+        json.encode(requestData),
+        contentType: MediaType('application', 'json'),
       );
+      request.files.add(studentRequestPart);
+
+      // Send the request
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
 
       if (response.statusCode == 201 || response.statusCode == 200) {
         _headerController.clear();
         _bodyController.clear();
+        setState(() {
+          _selectedFile = null;
+          _fileName = null;
+        });
         widget.onRequestSubmitted();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Request submitted successfully')),
           );
         }
+      } else {
+        throw Exception('Failed to submit request: ${response.body}');
       }
     } catch (e) {
       if (mounted) {
@@ -269,6 +328,57 @@ class _NewRequestFormState extends State<NewRequestForm> {
                 return null;
               },
             ),
+            const SizedBox(height: 16),
+            // File attachment section
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.grey.shade300),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          _fileName ?? 'No file selected',
+                          style: TextStyle(
+                            color: _fileName != null ? Colors.black87 : Colors.grey,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      TextButton.icon(
+                        onPressed: _isSubmitting ? null : _pickFile,
+                        icon: const Icon(Icons.attach_file),
+                        label: const Text('Choose File'),
+                      ),
+                    ],
+                  ),
+                  if (_fileName != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: TextButton(
+                        onPressed: _isSubmitting
+                            ? null
+                            : () {
+                          setState(() {
+                            _selectedFile = null;
+                            _fileName = null;
+                          });
+                        },
+                        child: const Text('Remove File'),
+                        style: TextButton.styleFrom(
+                          foregroundColor: Colors.red,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
             const SizedBox(height: 24),
             ElevatedButton(
               onPressed: _isSubmitting ? null : _submitRequest,
@@ -287,6 +397,13 @@ class _NewRequestFormState extends State<NewRequestForm> {
         ),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _headerController.dispose();
+    _bodyController.dispose();
+    super.dispose();
   }
 }
 
