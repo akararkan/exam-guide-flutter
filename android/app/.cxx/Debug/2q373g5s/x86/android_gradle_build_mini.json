@@ -1,0 +1,20 @@
+{
+  "buildFiles": [
+    "/home/akar/development/flutter/packages/flutter_tools/gradle/src/main/groovy/CMakeLists.txt"
+  ],
+  "cleanCommandsComponents": [
+    [
+      "/usr/bin/ninja",
+      "-C",
+      "/home/akar/StudioProjects/exam-guide-flutter/android/app/.cxx/Debug/2q373g5s/x86",
+      "clean"
+    ]
+  ],
+  "buildTargetsCommandComponents": [
+    "/usr/bin/ninja",
+    "-C",
+    "/home/akar/StudioProjects/exam-guide-flutter/android/app/.cxx/Debug/2q373g5s/x86",
+    "{LIST_OF_TARGETS_TO_BUILD}"
+  ],
+  "libraries": {}
+}

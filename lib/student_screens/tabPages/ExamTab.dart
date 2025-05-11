@@ -266,13 +266,28 @@ class _ExamTabState extends State<ExamTab> {
 
   Future<void> _loadData() async {
     try {
-      final holes = await _examService.getAllExamHoles();
+      // First, get the user's assignments
       final assignments = await _examService.getExamHolesForUser(globalUserId!);
-      setState(() {
-        examHoles = holes;
-        userAssignments = assignments;
-        isLoading = false;
-      });
+
+      // If the user has any assignments, then get only those exam holes
+      if (assignments.isNotEmpty) {
+        final Set<int> assignedHoleIds = assignments.map((a) => a.examHoleId).toSet();
+        final allHoles = await _examService.getAllExamHoles();
+        final assignedHoles = allHoles.where((hole) => assignedHoleIds.contains(hole.id)).toList();
+
+        setState(() {
+          examHoles = assignedHoles;
+          userAssignments = assignments;
+          isLoading = false;
+        });
+      } else {
+        // If user has no assignments, just show empty list
+        setState(() {
+          examHoles = [];
+          userAssignments = [];
+          isLoading = false;
+        });
+      }
     } catch (e) {
       setState(() {
         isLoading = false;
@@ -291,6 +306,15 @@ class _ExamTabState extends State<ExamTab> {
       return Scaffold(
         appBar: AppBar(title: const Text('Exam Holes')),
         body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (examHoles.isEmpty) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Exam Holes')),
+        body: const Center(
+          child: Text('You are not assigned to any exam holes yet.'),
+        ),
       );
     }
 
@@ -445,7 +469,7 @@ class _SeatingPlanScreenState extends State<SeatingPlanScreen> {
   Future<void> _loadAssignments() async {
     try {
       final assignments =
-          await _examService.getAssignmentsForExamHole(widget.examHole.id);
+      await _examService.getAssignmentsForExamHole(widget.examHole.id);
       setState(() {
         allAssignments = assignments;
         isLoading = false;
@@ -504,6 +528,34 @@ class _SeatingPlanScreenState extends State<SeatingPlanScreen> {
     return seatGrid;
   }
 
+  // Generate the additional row with M1, N1, O1 seats
+  List<String?> _generateAdditionalSeats() {
+    // Define the exact same structure as a row in the main grid to ensure alignment
+    List<String?> additionalSeats = [];
+
+    // Left section (3 columns + 1 space)
+    additionalSeats.add(null); // Empty instead of A
+    additionalSeats.add(null); // Empty instead of B
+    additionalSeats.add(null); // Empty instead of C
+    additionalSeats.add(null); // Space
+
+    // Center section with our new seats
+    additionalSeats.add('M1'); // First additional seat
+    additionalSeats.add('N1'); // Second additional seat
+    additionalSeats.add('O1'); // Third additional seat
+    additionalSeats.add(null); // Empty instead of G
+    additionalSeats.add(null); // Empty instead of H
+    additionalSeats.add(null); // Empty instead of I
+
+    // Right section (1 space + 3 columns)
+    additionalSeats.add(null); // Space
+    additionalSeats.add(null); // Empty instead of J
+    additionalSeats.add(null); // Empty instead of K
+    additionalSeats.add(null); // Empty instead of L
+
+    return additionalSeats;
+  }
+
   String _getSeatLetter(int col) {
     if (col <= 3) {
       return String.fromCharCode(64 + col); // A, B, C for left section
@@ -520,6 +572,7 @@ class _SeatingPlanScreenState extends State<SeatingPlanScreen> {
   @override
   Widget build(BuildContext context) {
     final seatGrid = _generateSeatGrid();
+    final additionalSeats = _generateAdditionalSeats();
 
     return Scaffold(
       appBar: AppBar(
@@ -528,83 +581,136 @@ class _SeatingPlanScreenState extends State<SeatingPlanScreen> {
       body: isLoading
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
-              scrollDirection: Axis.vertical,
-              padding: const EdgeInsets.all(16),
+        scrollDirection: Axis.vertical,
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            if (widget.userSeatNumber != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: Text(
+                  'Your Seat Number: ${widget.userSeatNumber}',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: widget.userDepartmentId != null
+                        ? DepartmentConfig.getColorForDepartment(
+                        widget.userDepartmentId!)
+                        : Colors.green,
+                  ),
+                ),
+              ),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
               child: Column(
                 children: [
-                  if (widget.userSeatNumber != null)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 16),
-                      child: Text(
-                        'Your Seat Number: ${widget.userSeatNumber}',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: widget.userDepartmentId != null
-                              ? DepartmentConfig.getColorForDepartment(
-                                  widget.userDepartmentId!)
-                              : Colors.green,
-                        ),
-                      ),
-                    ),
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Column(
-                      children: List.generate(
-                        seatGrid.length,
+                  ...List.generate(
+                    seatGrid.length,
                         (rowIndex) {
-                          final rowSeats = seatGrid[rowIndex];
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 12),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: rowSeats.map((seatName) {
-                                if (seatName == null) {
-                                  return const SizedBox(width: 40, height: 40);
-                                }
+                      final rowSeats = seatGrid[rowIndex];
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: rowSeats.map((seatName) {
+                            if (seatName == null) {
+                              return const SizedBox(width: 40, height: 40);
+                            }
 
-                                final assignment = allAssignments.firstWhere(
+                            final assignment = allAssignments.firstWhere(
                                   (a) =>
-                                      a.seatNumber.toUpperCase() ==
-                                      seatName.toUpperCase(),
-                                  orElse: () => ExamHoleAssignment(
-                                    id: -1,
-                                    examHoleId: widget.examHole.id,
-                                    userId: -1,
-                                    seatNumber: '',
-                                    departmentId: -1,
-                                  ),
-                                );
+                              a.seatNumber.toUpperCase() ==
+                                  seatName.toUpperCase(),
+                              orElse: () => ExamHoleAssignment(
+                                id: -1,
+                                examHoleId: widget.examHole.id,
+                                userId: -1,
+                                seatNumber: '',
+                                departmentId: -1,
+                              ),
+                            );
 
-                                final isCurrentUser = seatName.toUpperCase() ==
-                                    widget.userSeatNumber?.toUpperCase();
-                                final isOccupied = assignment.userId != -1;
+                            final isCurrentUser = seatName.toUpperCase() ==
+                                widget.userSeatNumber?.toUpperCase();
+                            final isOccupied = assignment.userId != -1;
 
-                                return Padding(
-                                  padding: const EdgeInsets.all(4.0),
-                                  child: SeatTile(
-                                    seatName: seatName,
-                                    isCurrentUser: isCurrentUser,
-                                    isOccupied: isOccupied,
-                                    assignedUserId: assignment.userId,
-                                    departmentId: assignment.departmentId,
-                                    userDepartmentId: widget.userDepartmentId,
-                                  ),
-                                );
-                              }).toList(),
-                            ),
-                          );
-                        },
-                      ),
+                            return Padding(
+                              padding: const EdgeInsets.all(4.0),
+                              child: SeatTile(
+                                seatName: seatName,
+                                isCurrentUser: isCurrentUser,
+                                isOccupied: isOccupied,
+                                assignedUserId: assignment.userId,
+                                departmentId: assignment.departmentId,
+                                userDepartmentId: widget.userDepartmentId,
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      );
+                    },
+                  ),
+                  // Add the additional row with M1, N1, O1 seats - explicitly separated from the List.generate
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 20, top: 20),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey.shade300, width: 1),
+                      borderRadius: BorderRadius.circular(8),
+                      color: Colors.grey.shade100,
+                    ),
+                    child: Column(
+                      children: [
+                        Text("Additional Seats", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey.shade700)),
+                        SizedBox(height: 8),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: additionalSeats.map((seatName) {
+                            if (seatName == null) {
+                              return const SizedBox(width: 40, height: 40);
+                            }
+
+                            final assignment = allAssignments.firstWhere(
+                                  (a) => a.seatNumber.toUpperCase() == seatName.toUpperCase(),
+                              orElse: () => ExamHoleAssignment(
+                                id: -1,
+                                examHoleId: widget.examHole.id,
+                                userId: -1,
+                                seatNumber: '',
+                                departmentId: -1,
+                              ),
+                            );
+
+                            final isCurrentUser = seatName.toUpperCase() ==
+                                widget.userSeatNumber?.toUpperCase();
+                            final isOccupied = assignment.userId != -1;
+
+                            return Padding(
+                              padding: const EdgeInsets.all(4.0),
+                              child: SeatTile(
+                                seatName: seatName,
+                                isCurrentUser: isCurrentUser,
+                                isOccupied: isOccupied,
+                                assignedUserId: assignment.userId,
+                                departmentId: assignment.departmentId,
+                                userDepartmentId: widget.userDepartmentId,
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  _buildStageDesign(),
-                  const SizedBox(height: 16),
-                  _buildLegend(),
                 ],
               ),
             ),
+            const SizedBox(height: 16),
+            _buildStageDesign(),
+            const SizedBox(height: 16),
+            _buildLegend(),
+          ],
+        ),
+      ),
     );
   }
 
@@ -669,16 +775,24 @@ class _SeatingPlanScreenState extends State<SeatingPlanScreen> {
         Wrap(
           alignment: WrapAlignment.center,
           spacing: 16.0,
-          runSpacing: 8.0,
+          runSpacing: 12.0,
           children: [
-            for (var dept in DepartmentConfig.departments.values)
-              _buildLegendItem(
-                dept.color,
-                dept.name,
-              ),
+            // Updated to include all department levels
+            _buildLegendItem(Colors.blue.shade400, 'IT 1'),
+            _buildLegendItem(Colors.blue.shade700, 'IT 2'),
+            _buildLegendItem(Colors.blue.shade900, 'IT 3'),
+            _buildLegendItem(Colors.lightBlue.shade400, 'IT 4'),
+            _buildLegendItem(Colors.green.shade400, 'Gashtw Guzar 1'),
+            _buildLegendItem(Colors.green.shade700, 'Gashtw Guzar 2'),
+            _buildLegendItem(Colors.green.shade900, 'Gashtw Guzar 3'),
+            _buildLegendItem(Colors.lightGreen.shade400, 'Gashtw Guzar 4'),
+            _buildLegendItem(Colors.orange.shade400, 'Darayy w Bank 1'),
+            _buildLegendItem(Colors.orange.shade700, 'Darayy w Bank 2'),
+            _buildLegendItem(Colors.orange.shade900, 'Darayy w Bank 3'),
+            _buildLegendItem(Colors.amber.shade400, 'Darayy w Bank 4'),
           ],
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 12),
         _buildLegendItem(Colors.grey.shade300, 'Available Seat'),
       ],
     );

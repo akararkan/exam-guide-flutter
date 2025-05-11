@@ -119,14 +119,24 @@ class _ReportTabState extends State<ReportTab> with SingleTickerProviderStateMix
   }
 
   Future<void> fetchRequests() async {
+    // Return early if globalUserId is null
+    if (globalUserId == null) {
+      setState(() {
+        error = 'User ID not found. Please log in again.';
+        isLoading = false;
+      });
+      return;
+    }
+
     setState(() {
       isLoading = true;
       error = null;
     });
 
     try {
+      // Modified endpoint to fetch only the current user's requests
       final response = await http.get(
-        Uri.parse('$api/student-requests/getAllStudentRequests'),
+        Uri.parse('$api/student-requests/getStudentRequestsByUserId/$globalUserId'),
       );
 
       if (response.statusCode == 200) {
@@ -154,7 +164,7 @@ class _ReportTabState extends State<ReportTab> with SingleTickerProviderStateMix
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Student Requests'),
+        title: const Text('My Student Requests'), // Updated title to reflect it's user-specific
         bottom: TabBar(
           controller: _tabController,
           tabs: const [
@@ -225,6 +235,16 @@ class _NewRequestFormState extends State<NewRequestForm> {
 
   Future<void> _submitRequest() async {
     if (!_formKey.currentState!.validate()) return;
+
+    // Check if user ID is available
+    if (globalUserId == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('User ID not found. Please log in again.')),
+        );
+      }
+      return;
+    }
 
     setState(() => _isSubmitting = true);
     try {

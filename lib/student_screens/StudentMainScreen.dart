@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
+import '../AboutUs.dart';
 import '../security/LoginScreen.dart';
 
 class StudentMainScreen extends StatefulWidget {
@@ -126,6 +127,16 @@ class _StudentMainScreenState extends State<StudentMainScreen> {
               leading: Icon(Icons.logout),
               title: Text('Logout'),
               onTap: _logout,
+            ),
+            ListTile(
+              leading: Icon(Icons.account_box_outlined),
+              title: Text('About Us'),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const AboutUsScreen()),
+                );
+              },
             ),
           ],
         ),
